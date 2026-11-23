@@ -61,4 +61,16 @@ Presentación web interactiva para la defensa de Tesis de Grado (**Ingeniería e
 - `H` / `?`: Ventana de **Ayuda**
 - `D`: Iniciar / Pausar cronómetro de Demo (Slide 06)
 - `1` a `5`: Tildar hitos de Demo (Slide 06)
+- `1` a `4`: Elegir ADR principal (Slide 09)
+- `1` a `5`: Filtrar flujos de arquitectura (Slide 10)
+- `Inicio` / `Fin`: Primera / última slide
+- `R`: Reiniciar la animación de la slide actual
 - `Esc`: Cerrar menús
+
+La URL refleja la slide actual (`index.html#7`): si el navegador se recarga en plena defensa, vuelve a la misma slide.
+
+## 🖥️ Proyector
+
+El escenario es un lienzo fijo de **1600×900 (16:9)** que se escala de forma uniforme a la pantalla, así que se ve igual en 1920×1080, 1366×768, 1280×720 o 1024×768 (en 4:3 aparecen franjas arriba y abajo).
+
+El cronómetro de la demo sigue contando en negativo (`+00:45`) si se pasan de los 11 minutos.

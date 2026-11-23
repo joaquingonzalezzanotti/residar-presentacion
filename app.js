@@ -14,6 +14,19 @@
   var currentSlide = 0;
   var currentStep = 0;
 
+  /* ==========================================================
+     00 · ESCALADO DEL LIENZO 1600x900 AL TAMAÑO DE PANTALLA
+     ========================================================== */
+  var STAGE_W = 1600;
+  var STAGE_H = 900;
+  var stageScale = 1;
+
+  function fitStage() {
+    stageScale = Math.min(window.innerWidth / STAGE_W, window.innerHeight / STAGE_H);
+    document.documentElement.style.setProperty("--stage-scale", stageScale);
+  }
+  fitStage();
+
   var hudSectionLabel = $("#hudSectionLabel");
   var hudProgressFill = $("#hudProgressFill");
   var slideCounter = $("#slideCounter");
@@ -32,14 +45,13 @@
   function initParticles() {
     if (!canvas || !window.RESIDAR_LOGO_POINTS) return;
 
-    var rect = canvas.parentElement.getBoundingClientRect();
-    var dpr = window.devicePixelRatio || 1;
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
-    ctx.scale(dpr, dpr);
-
-    var W = rect.width;
-    var H = rect.height;
+    // offsetWidth/Height = tamaño lógico (sin el transform de escala del stage)
+    var W = canvas.parentElement.offsetWidth;
+    var H = canvas.parentElement.offsetHeight;
+    var ratio = (window.devicePixelRatio || 1) * stageScale;
+    canvas.width = Math.round(W * ratio);
+    canvas.height = Math.round(H * ratio);
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     var cx = W / 2;
     var cy = H / 2;
     var scale = Math.min(W, H) * 0.85;
@@ -75,10 +87,7 @@
 
   function loopParticles() {
     if (!ctx) return;
-    var rect = canvas.parentElement.getBoundingClientRect();
-    var W = rect.width;
-    var H = rect.height;
-    ctx.clearRect(0, 0, W, H);
+    ctx.clearRect(0, 0, canvas.parentElement.offsetWidth, canvas.parentElement.offsetHeight);
 
     var elapsed = performance.now() - animStartTime;
     var convergeFactor = Math.min(1, elapsed / 2200);
@@ -113,56 +122,67 @@
     animReq = requestAnimationFrame(loopParticles);
   }
 
+  function stopParticles() {
+    if (animReq) cancelAnimationFrame(animReq);
+    animReq = null;
+  }
+
   /* ==========================================================
      02 · CRONÓMETRO DEMO EN VIVO (SLIDE 06)
      ========================================================== */
-  var demoTimerSecs = 660; // 11 min * 60
+  var DEMO_TOTAL_SECS = 11 * 60;
+  var demoRemainingMs = DEMO_TOTAL_SECS * 1000; // tiempo restante al último pause
+  var demoStartedAt = 0;                         // timestamp del último start
   var demoTimerRunning = false;
   var demoInterval = null;
   var demoClockEl = $("#demoClock");
   var btnToggleTimer = $("#btnToggleTimer");
   var btnResetTimer = $("#btnResetTimer");
 
+  function demoRemainingSecs() {
+    var ms = demoRemainingMs - (demoTimerRunning ? performance.now() - demoStartedAt : 0);
+    return Math.ceil(ms / 1000);
+  }
+
   function updateDemoClockDisplay() {
     if (!demoClockEl) return;
-    var m = Math.floor(demoTimerSecs / 60);
-    var s = demoTimerSecs % 60;
-    demoClockEl.textContent = (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s;
+    var secs = demoRemainingSecs();
+    var abs = Math.abs(secs);
+    var m = Math.floor(abs / 60);
+    var s = abs % 60;
+    // Al pasarse del tiempo sigue contando en negativo (+MM:SS) para saber cuánto nos excedimos
+    demoClockEl.textContent = (secs < 0 ? "+" : "") + (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s;
 
-    if (demoTimerSecs <= 120 && demoTimerSecs > 30) {
-      demoClockEl.style.color = "#fbbf24";
-    } else if (demoTimerSecs <= 30) {
+    if (secs <= 0) {
       demoClockEl.style.color = "#f87171";
+    } else if (secs <= 120) {
+      demoClockEl.style.color = "#fbbf24";
     } else {
       demoClockEl.style.color = "#ffffff";
+    }
+    if (btnToggleTimer && demoTimerRunning) {
+      btnToggleTimer.textContent = secs <= 0 ? "Tiempo excedido · Pausar (D)" : "Pausar Demo (D)";
     }
   }
 
   function toggleDemoTimer() {
     if (demoTimerRunning) {
-      clearInterval(demoInterval);
+      demoRemainingMs -= performance.now() - demoStartedAt;
       demoTimerRunning = false;
+      clearInterval(demoInterval);
       if (btnToggleTimer) btnToggleTimer.textContent = "Continuar Demo (D)";
     } else {
+      demoStartedAt = performance.now();
       demoTimerRunning = true;
-      if (btnToggleTimer) btnToggleTimer.textContent = "Pausar Demo (D)";
-      demoInterval = setInterval(function () {
-        if (demoTimerSecs > 0) {
-          demoTimerSecs--;
-          updateDemoClockDisplay();
-        } else {
-          clearInterval(demoInterval);
-          demoTimerRunning = false;
-          if (btnToggleTimer) btnToggleTimer.textContent = "Tiempo Cumplido";
-        }
-      }, 1000);
+      demoInterval = setInterval(updateDemoClockDisplay, 250);
     }
+    updateDemoClockDisplay();
   }
 
   function resetDemoTimer() {
     clearInterval(demoInterval);
     demoTimerRunning = false;
-    demoTimerSecs = 660;
+    demoRemainingMs = DEMO_TOTAL_SECS * 1000;
     updateDemoClockDisplay();
     if (btnToggleTimer) btnToggleTimer.textContent = "Iniciar Demo (D)";
   }
@@ -219,7 +239,7 @@
       decision: "Base de datos PostgreSQL única compartida. residencia_id es el tenant operativo obligatorio en cada consulta; organizacion_id es el agrupador superior empresarial.",
       tradeoff: "Descartado: BD por tenant (costo prohibitivo y migraciones lentas). Trade-off: Requiere disciplina estricta en backend: cada query operativa exige residencia_id.",
       consecuencia: "Escalabilidad económica para residencias argentinas, mantenimiento simplificado de migraciones Prisma y aislamiento lógico estricto mediante guards.",
-      svg: '<svg viewBox="0 0 460 260" xmlns="http://www.w3.org/2000/svg"><rect width="460" height="260" rx="10" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1.5"/><g transform="translate(20,20)"><rect width="120" height="40" rx="6" fill="#0c3564"/><text x="60" y="24" fill="#ffffff" font-size="11" font-weight="bold" text-anchor="middle" font-family="Montserrat">HTTP Request</text><text x="60" y="34" fill="#93c5fd" font-size="8" text-anchor="middle" font-family="Consolas">residencia_id: 1</text></g><path d="M 140 40 L 190 40" stroke="#b4372e" stroke-width="2.5" stroke-dasharray="4,3"/><polygon points="190,36 198,40 190,44" fill="#b4372e"/><g transform="translate(200,15)"><rect width="120" height="50" rx="6" fill="#ffffff" stroke="#b4372e" stroke-width="2"/><text x="60" y="22" fill="#0c3564" font-size="10" font-weight="bold" text-anchor="middle" font-family="Montserrat">Tenant Interceptor</text><text x="60" y="38" fill="#059669" font-size="9" font-weight="bold" text-anchor="middle" font-family="Consolas">WHERE res_id = 1</text></g><path d="M 320 40 L 370 40" stroke="#0c3564" stroke-width="2"/><polygon points="370,36 378,40 370,44" fill="#0c3564"/><g transform="translate(200,95)"><rect width="240" height="145" rx="8" fill="#ffffff" stroke="#0c3564" stroke-width="2"/><rect width="240" height="28" rx="8" fill="#0c3564"/><text x="120" y="18" fill="#ffffff" font-size="11" font-weight="bold" text-anchor="middle" font-family="Montserrat">PostgreSQL · Base Compartida</text><g transform="translate(15,38)"><rect width="210" height="24" rx="4" fill="#fee2e2" stroke="#b4372e" stroke-width="1.5"/><text x="10" y="16" fill="#991b1b" font-size="9" font-weight="bold" font-family="Consolas">residencia_id = 1 (Espinosa) [ACTIVO]</text></g><g transform="translate(15,68)"><rect width="210" height="20" rx="4" fill="#f1f5f9"/><text x="10" y="14" fill="#64748b" font-size="9" font-family="Consolas">residencia_id = 2 (Centro) [AISLADO]</text></g><g transform="translate(15,93)"><rect width="210" height="20" rx="4" fill="#f1f5f9"/><text x="10" y="14" fill="#64748b" font-size="9" font-family="Consolas">residencia_id = 3 (Nva Cba) [AISLADO]</text></g><g transform="translate(15,118)"><rect width="210" height="20" rx="4" fill="#f1f5f9"/><text x="10" y="14" fill="#64748b" font-size="9" font-family="Consolas">residencia_id = 4 (Sede Norte) [AISLADO]</text></g></g><g transform="translate(20,130)"><rect width="160" height="85" rx="6" fill="#ecfdf5" stroke="#10b981" stroke-width="1.5"/><text x="80" y="24" fill="#065f46" font-size="11" font-weight="bold" text-anchor="middle" font-family="Montserrat">Garantía de Aislamiento</text><text x="80" y="44" fill="#047857" font-size="9" text-anchor="middle" font-family="Montserrat">Cero fuga entre sedes</text><text x="80" y="60" fill="#047857" font-size="9" text-anchor="middle" font-family="Montserrat">1 sola BD · Costo O(1)</text><text x="80" y="74" fill="#059669" font-size="8" font-weight="bold" text-anchor="middle" font-family="Consolas">100% Auditado</text></g></svg>'
+      svg: '<svg viewBox="0 0 460 260" xmlns="http://www.w3.org/2000/svg"><rect width="460" height="260" rx="10" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1.5"/><g transform="translate(20,20)"><rect width="120" height="40" rx="6" fill="#0c3564"/><text x="60" y="24" fill="#ffffff" font-size="11" font-weight="bold" text-anchor="middle" font-family="Montserrat">HTTP Request</text><text x="60" y="34" fill="#93c5fd" font-size="8" text-anchor="middle" font-family="Consolas">residencia_id: 1</text></g><path d="M 140 40 L 190 40" stroke="#b4372e" stroke-width="2.5" stroke-dasharray="4,3"/><polygon points="190,36 198,40 190,44" fill="#b4372e"/><g transform="translate(200,15)"><rect width="120" height="50" rx="6" fill="#ffffff" stroke="#b4372e" stroke-width="2"/><text x="60" y="22" fill="#0c3564" font-size="10" font-weight="bold" text-anchor="middle" font-family="Montserrat">Tenant Interceptor</text><text x="60" y="38" fill="#059669" font-size="9" font-weight="bold" text-anchor="middle" font-family="Consolas">WHERE res_id = 1</text></g><path d="M 320 40 L 370 40" stroke="#0c3564" stroke-width="2"/><polygon points="370,36 378,40 370,44" fill="#0c3564"/><g transform="translate(200,95)"><rect width="240" height="145" rx="8" fill="#ffffff" stroke="#0c3564" stroke-width="2"/><rect width="240" height="28" rx="8" fill="#0c3564"/><text x="120" y="18" fill="#ffffff" font-size="11" font-weight="bold" text-anchor="middle" font-family="Montserrat">PostgreSQL · Base Compartida</text><g transform="translate(15,38)"><rect width="210" height="24" rx="4" fill="#fee2e2" stroke="#b4372e" stroke-width="1.5"/><text x="10" y="16" fill="#991b1b" font-size="9" font-weight="bold" font-family="Consolas">residencia_id = 1 (Espinosa) [ACTIVO]</text></g><g transform="translate(15,68)"><rect width="210" height="20" rx="4" fill="#f1f5f9"/><text x="10" y="14" fill="#64748b" font-size="9" font-family="Consolas">residencia_id = 2 (Centro) [AISLADO]</text></g><g transform="translate(15,93)"><rect width="210" height="20" rx="4" fill="#f1f5f9"/><text x="10" y="14" fill="#64748b" font-size="9" font-family="Consolas">residencia_id = 3 (Nva Cba) [AISLADO]</text></g><g transform="translate(15,118)"><rect width="210" height="20" rx="4" fill="#f1f5f9"/><text x="10" y="14" fill="#64748b" font-size="9" font-family="Consolas">residencia_id = 4 (Sede Norte) [AISLADO]</text></g></g><g transform="translate(20,130)"><rect width="160" height="85" rx="6" fill="#ecfdf5" stroke="#10b981" stroke-width="1.5"/><text x="80" y="24" fill="#065f46" font-size="11" font-weight="bold" text-anchor="middle" font-family="Montserrat">Garantía de Aislamiento</text><text x="80" y="44" fill="#047857" font-size="9" text-anchor="middle" font-family="Montserrat">Aislamiento por residencia_id</text><text x="80" y="60" fill="#047857" font-size="9" text-anchor="middle" font-family="Montserrat">1 sola BD · costo contenido</text><text x="80" y="74" fill="#059669" font-size="8" font-weight="bold" text-anchor="middle" font-family="Consolas">Filtro obligatorio en guards</text></g></svg>'
     },
     "7": {
       badge: "ADR-007 · Subdominios & Stock",
@@ -248,8 +268,8 @@
       contexto: "Custodia segura de contratos de ingreso firmados, recetas médicas y fotos sin saturar la base relacional ni exponer archivos públicamente.",
       decision: "Abstracción StorageProvider con adaptador R2StorageService compatible con S3. Buckets 100% privados; acceso mediante URLs prefirmadas temporales de 15 minutos.",
       tradeoff: "Descartado: Almacenar binarios en PostgreSQL (blobs) o buckets públicos con links estáticos (inadmisible por Ley 25.326).",
-      consecuencia: "Blindaje de privacidad según Ley 25.326 y reducción a cero del costo de egreso de datos (Cloudflare R2 sin tarifas de egress).",
-      svg: '<svg viewBox="0 0 460 260" xmlns="http://www.w3.org/2000/svg"><rect width="460" height="260" rx="10" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1.5"/><g transform="translate(20,25)"><rect width="110" height="60" rx="6" fill="#0c3564"/><text x="55" y="26" fill="#ffffff" font-size="11" font-weight="bold" text-anchor="middle" font-family="Montserrat">Browser</text><text x="55" y="42" fill="#ffffff" font-size="10" text-anchor="middle">Cliente Web</text></g><path d="M 135 45 L 210 45" stroke="#0c3564" stroke-width="2"/><polygon points="210,41 218,45 210,49" fill="#0c3564"/><text x="175" y="38" fill="#64748b" font-size="8" font-weight="bold" text-anchor="middle">1. Pedir URL</text><g transform="translate(225,20)"><rect width="140" height="70" rx="6" fill="#ffffff" stroke="#b4372e" stroke-width="2"/><text x="70" y="24" fill="#0c3564" font-size="11" font-weight="bold" text-anchor="middle" font-family="Montserrat">Backend NestJS</text><text x="70" y="40" fill="#b4372e" font-size="9" font-weight="bold" text-anchor="middle" font-family="Consolas">StorageProvider</text><text x="70" y="56" fill="#059669" font-size="8" font-weight="bold" text-anchor="middle">Firma S3 AWS-SDK</text></g><path d="M 220 70 L 140 70" stroke="#059669" stroke-width="2" stroke-dasharray="3,3"/><polygon points="140,74 132,70 140,66" fill="#059669"/><text x="175" y="85" fill="#059669" font-size="8" font-weight="bold" text-anchor="middle">2. Presigned URL (15m)</text><g transform="translate(225,140)"><rect width="215" height="95" rx="8" fill="#f0f9ff" stroke="#0284c7" stroke-width="2"/><rect width="215" height="24" rx="8" fill="#0284c7"/><text x="107" y="16" fill="#ffffff" font-size="10" font-weight="bold" text-anchor="middle" font-family="Montserrat">Cloudflare R2 (Private Bucket)</text><g transform="translate(15,34)"><text x="0" y="14" fill="#0369a1" font-size="9" font-weight="bold">🔒 Cero acceso anónimo</text><text x="0" y="28" fill="#0369a1" font-size="9" font-weight="bold">🛡️ Cumplimiento Ley 25.326</text><text x="0" y="42" fill="#0284c7" font-size="9" font-weight="bold">⚡ $0 Egress Fee (Tráfico Ilimitado)</text></g></g><path d="M 80 90 L 80 185 L 215 185" fill="none" stroke="#b4372e" stroke-width="2.5"/><polygon points="215,181 223,185 215,189" fill="#b4372e"/><text x="135" y="175" fill="#b4372e" font-size="9" font-weight="bold" text-anchor="middle">3. Upload/Download Directo</text></svg>'
+      consecuencia: "Protección de la privacidad alineada con la Ley 25.326 y sin costo de egreso de datos (Cloudflare R2 no cobra tráfico de salida).",
+      svg: '<svg viewBox="0 0 460 260" xmlns="http://www.w3.org/2000/svg"><rect width="460" height="260" rx="10" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1.5"/><g transform="translate(20,25)"><rect width="110" height="60" rx="6" fill="#0c3564"/><text x="55" y="26" fill="#ffffff" font-size="11" font-weight="bold" text-anchor="middle" font-family="Montserrat">Browser</text><text x="55" y="42" fill="#ffffff" font-size="10" text-anchor="middle">Cliente Web</text></g><path d="M 135 45 L 210 45" stroke="#0c3564" stroke-width="2"/><polygon points="210,41 218,45 210,49" fill="#0c3564"/><text x="175" y="38" fill="#64748b" font-size="8" font-weight="bold" text-anchor="middle">1. Pedir URL</text><g transform="translate(225,20)"><rect width="140" height="70" rx="6" fill="#ffffff" stroke="#b4372e" stroke-width="2"/><text x="70" y="24" fill="#0c3564" font-size="11" font-weight="bold" text-anchor="middle" font-family="Montserrat">Backend NestJS</text><text x="70" y="40" fill="#b4372e" font-size="9" font-weight="bold" text-anchor="middle" font-family="Consolas">StorageProvider</text><text x="70" y="56" fill="#059669" font-size="8" font-weight="bold" text-anchor="middle">Firma S3 AWS-SDK</text></g><path d="M 220 70 L 140 70" stroke="#059669" stroke-width="2" stroke-dasharray="3,3"/><polygon points="140,74 132,70 140,66" fill="#059669"/><text x="175" y="85" fill="#059669" font-size="8" font-weight="bold" text-anchor="middle">2. Presigned URL (15m)</text><g transform="translate(225,140)"><rect width="215" height="95" rx="8" fill="#f0f9ff" stroke="#0284c7" stroke-width="2"/><rect width="215" height="24" rx="8" fill="#0284c7"/><text x="107" y="16" fill="#ffffff" font-size="10" font-weight="bold" text-anchor="middle" font-family="Montserrat">Cloudflare R2 (Private Bucket)</text><g transform="translate(15,34)"><text x="0" y="14" fill="#0369a1" font-size="9" font-weight="bold">🔒 Bucket privado, sin links públicos</text><text x="0" y="28" fill="#0369a1" font-size="9" font-weight="bold">🛡️ Alineado con Ley 25.326</text><text x="0" y="42" fill="#0284c7" font-size="9" font-weight="bold">⚡ Sin costo de egreso</text></g></g><path d="M 80 90 L 80 185 L 215 185" fill="none" stroke="#b4372e" stroke-width="2.5"/><polygon points="215,181 223,185 215,189" fill="#b4372e"/><text x="135" y="175" fill="#b4372e" font-size="9" font-weight="bold" text-anchor="middle">3. Upload/Download Directo</text></svg>'
     },
     "2": {
       badge: "ADR-002 · Stack Tecnológico",
@@ -268,7 +288,7 @@
       contexto: "Problemas de sincronización de husos horarios entre PostgreSQL, servidor y navegadores cliente.",
       decision: "Almacenar y transportar todas las marcas temporales como strings ISO 8601 UTC inmutables.",
       tradeoff: "Descartado: Timestamps numéricos o Date objects locales dependientes del cliente.",
-      consecuencia: "Cero discrepancias en horarios de tomas de medicación o registros de turnos de enfermería.",
+      consecuencia: "Evita discrepancias de huso horario en las tomas de medicación y en los registros de turno de enfermería.",
       svg: '<svg viewBox="0 0 460 260" xmlns="http://www.w3.org/2000/svg"><rect width="460" height="260" rx="10" fill="#f8fafc" stroke="#e2e8f0"/><g transform="translate(40,50)"><rect width="380" height="150" rx="8" fill="#ffffff" stroke="#0c3564" stroke-width="2"/><text x="190" y="35" fill="#0c3564" font-size="12" font-weight="bold" text-anchor="middle">Estándar Temporal Canónico</text><rect x="30" y="60" width="320" height="35" rx="6" fill="#f1f5f9"/><text x="190" y="82" fill="#b4372e" font-size="13" font-family="Consolas" font-weight="bold" text-anchor="middle">2026-11-23T08:00:00.000Z</text><text x="190" y="125" fill="#059669" font-size="10" font-weight="bold" text-anchor="middle">✓ Trazabilidad exacta en tomas de guardia y signos vitales</text></g></svg>'
     },
     "6": {
@@ -279,7 +299,7 @@
       decision: "Columna permisos en formato JSONB con jerarquía: consulta → alta → modificacion → borrado, y soporte de bypass all: true.",
       tradeoff: "Descartado: Tablas relacionales n-a-n (muy lentas en cada request) o roles planos sin granularidad.",
       consecuencia: "Extrema flexibilidad para crear nuevos roles operativos en cada residencia y validación ultrarrápida en memoria.",
-      svg: '<svg viewBox="0 0 460 260" xmlns="http://www.w3.org/2000/svg"><rect width="460" height="260" rx="10" fill="#f8fafc" stroke="#e2e8f0"/><g transform="translate(30,40)"><rect width="400" height="175" rx="8" fill="#ffffff" stroke="#0c3564" stroke-width="2"/><text x="200" y="30" fill="#0c3564" font-size="11" font-weight="bold" text-anchor="middle">Jerarquía de Acciones ABMC en Memoria</text><g transform="translate(25,50)"><rect width="75" height="35" rx="4" fill="#dbeafe"/><text x="37" y="22" fill="#1e40af" font-size="9" font-weight="bold" text-anchor="middle">consulta</text></g><text x="110" y="72" fill="#64748b" font-size="14">→</text><g transform="translate(125,50)"><rect width="75" height="35" rx="4" fill="#dcfce7"/><text x="37" y="22" fill="#166534" font-size="9" font-weight="bold" text-anchor="middle">alta</text></g><text x="210" y="72" fill="#64748b" font-size="14">→</text><g transform="translate(225,50)"><rect width="75" height="35" rx="4" fill="#fef3c7"/><text x="37" y="22" fill="#92400e" font-size="9" font-weight="bold" text-anchor="middle">modificación</text></g><text x="310" y="72" fill="#64748b" font-size="14">→</text><g transform="translate(325,50)"><rect width="60" height="35" rx="4" fill="#fee2e2"/><text x="30" y="22" fill="#991b1b" font-size="9" font-weight="bold" text-anchor="middle">borrado</text></g><g transform="translate(25,105)"><rect width="350" height="45" rx="4" fill="#f8fafc" stroke="#e2e8f0"/><text x="15" y="20" fill="#0c3564" font-size="9" font-family="Consolas font-weight-bold">permisos: { historia_clinica: "modificacion" }</text><text x="15" y="36" fill="#059669" font-size="8">Implica automáticamente permisos de alta y consulta</text></g></g></svg>'
+      svg: '<svg viewBox="0 0 460 260" xmlns="http://www.w3.org/2000/svg"><rect width="460" height="260" rx="10" fill="#f8fafc" stroke="#e2e8f0"/><g transform="translate(30,40)"><rect width="400" height="175" rx="8" fill="#ffffff" stroke="#0c3564" stroke-width="2"/><text x="200" y="30" fill="#0c3564" font-size="11" font-weight="bold" text-anchor="middle">Jerarquía de Acciones ABMC en Memoria</text><g transform="translate(25,50)"><rect width="75" height="35" rx="4" fill="#dbeafe"/><text x="37" y="22" fill="#1e40af" font-size="9" font-weight="bold" text-anchor="middle">consulta</text></g><text x="110" y="72" fill="#64748b" font-size="14">→</text><g transform="translate(125,50)"><rect width="75" height="35" rx="4" fill="#dcfce7"/><text x="37" y="22" fill="#166534" font-size="9" font-weight="bold" text-anchor="middle">alta</text></g><text x="210" y="72" fill="#64748b" font-size="14">→</text><g transform="translate(225,50)"><rect width="75" height="35" rx="4" fill="#fef3c7"/><text x="37" y="22" fill="#92400e" font-size="9" font-weight="bold" text-anchor="middle">modificación</text></g><text x="310" y="72" fill="#64748b" font-size="14">→</text><g transform="translate(325,50)"><rect width="60" height="35" rx="4" fill="#fee2e2"/><text x="30" y="22" fill="#991b1b" font-size="9" font-weight="bold" text-anchor="middle">borrado</text></g><g transform="translate(25,105)"><rect width="350" height="45" rx="4" fill="#f8fafc" stroke="#e2e8f0"/><text x="15" y="20" fill="#0c3564" font-size="9" font-family="Consolas" font-weight="bold">permisos: { historia_clinica: "modificacion" }</text><text x="15" y="36" fill="#059669" font-size="8">Implica automáticamente permisos de alta y consulta</text></g></g></svg>'
     },
     "10": {
       badge: "ADR-010 · Tratamientos",
@@ -288,7 +308,7 @@
       contexto: "Modelado de prescripciones médicas con frecuencias horarias variables (ej: cada 8 hs, tomas con comidas).",
       decision: "Generación automática de tomas proyectadas que el enfermero valida al momento exacto de la administración.",
       tradeoff: "Descartado: Registro retroactivo en papel sin alertas tempranas de omisión.",
-      consecuencia: "Imposible olvidar una dosis: el panel de guardia alerta de inmediato cualquier toma pendiente o retrasada.",
+      consecuencia: "Reduce el riesgo de omitir una dosis: el panel de guardia muestra las tomas pendientes o retrasadas.",
       svg: '<svg viewBox="0 0 460 260" xmlns="http://www.w3.org/2000/svg"><rect width="460" height="260" rx="10" fill="#f8fafc" stroke="#e2e8f0"/><g transform="translate(40,40)"><rect width="380" height="170" rx="8" fill="#ffffff" stroke="#0c3564" stroke-width="2"/><text x="190" y="30" fill="#0c3564" font-size="12" font-weight="bold" text-anchor="middle">Proyección Automática de Tomas Horarias</text><g transform="translate(30,55)"><rect width="90" height="45" rx="4" fill="#fee2e2"/><text x="45" y="22" fill="#991b1b" font-size="9" font-weight="bold" text-anchor="middle">08:00 hs</text><text x="45" y="36" fill="#991b1b" font-size="8" text-anchor="middle">Enalapril</text></g><g transform="translate(145,55)"><rect width="90" height="45" rx="4" fill="#ecfdf5"/><text x="45" y="22" fill="#065f46" font-size="9" font-weight="bold" text-anchor="middle">13:00 hs</text><text x="45" y="36" fill="#065f46" font-size="8" text-anchor="middle">Metformina</text></g><g transform="translate(260,55)"><rect width="90" height="45" rx="4" fill="#fef3c7"/><text x="45" y="22" fill="#92400e" font-size="9" font-weight="bold" text-anchor="middle">21:00 hs</text><text x="45" y="36" fill="#92400e" font-size="8" text-anchor="middle">Clonazepam</text></g><text x="190" y="135" fill="#0c3564" font-size="10" font-weight="bold" text-anchor="middle">Descuento automático de 1 unidad al confirmar administración</text></g></svg>'
     },
     "11": {
@@ -308,8 +328,8 @@
       contexto: "Vulnerabilidad clásica de almacenamiento de tokens JWT en localStorage frente a ataques XSS.",
       decision: "El Access Token solo vive en memoria de la SPA. El Refresh Token viaja en cookie HttpOnly con rotación atómica por cada uso.",
       tradeoff: "Descartado: Guardar JWT en localStorage o cookies accesibles por JavaScript.",
-      consecuencia: "Inmunidad total ante robo de credenciales mediante scripts maliciosos y revocación inmediata de sesiones.",
-      svg: '<svg viewBox="0 0 460 260" xmlns="http://www.w3.org/2000/svg"><rect width="460" height="260" rx="10" fill="#f8fafc" stroke="#e2e8f0"/><g transform="translate(30,40)"><rect width="180" height="160" rx="8" fill="#ffffff" stroke="#0c3564" stroke-width="2"/><text x="90" y="30" fill="#0c3564" font-size="11" font-weight="bold" text-anchor="middle">Access Token</text><text x="90" y="60" fill="#b4372e" font-size="10" font-weight="bold" text-anchor="middle">En Memoria RAM</text><text x="90" y="85" fill="#64748b" font-size="9" text-anchor="middle">Vida útil: 15 min</text><text x="90" y="110" fill="#059669" font-size="9" font-weight="bold" text-anchor="middle">Inaccesible por XSS</text><text x="90" y="130" fill="#64748b" font-size="8" text-anchor="middle">apiFetch interceptor</text></g><path d="M 215 120 L 245 120" stroke="#0c3564" stroke-width="2"/><g transform="translate(250,40)"><rect width="180" height="160" rx="8" fill="#ffffff" stroke="#059669" stroke-width="2"/><text x="90" y="30" fill="#059669" font-size="11" font-weight="bold" text-anchor="middle">Refresh Token</text><text x="90" y="60" fill="#0c3564" font-size="10" font-weight="bold" text-anchor="middle">Cookie HttpOnly</text><text x="90" y="85" fill="#64748b" font-size="9" text-anchor="middle">SameSite=Strict · Secure</text><text x="90" y="110" fill="#059669" font-size="9" font-weight="bold" text-anchor="middle">Rotación en cada uso</text><text x="90" y="130" fill="#64748b" font-size="8" text-anchor="middle">sid inmutable</text></g></svg>'
+      consecuencia: "Reduce la exposición de credenciales ante XSS (el token no persiste en el navegador) y permite revocar sesiones invalidando el refresh token.",
+      svg: '<svg viewBox="0 0 460 260" xmlns="http://www.w3.org/2000/svg"><rect width="460" height="260" rx="10" fill="#f8fafc" stroke="#e2e8f0"/><g transform="translate(30,40)"><rect width="180" height="160" rx="8" fill="#ffffff" stroke="#0c3564" stroke-width="2"/><text x="90" y="30" fill="#0c3564" font-size="11" font-weight="bold" text-anchor="middle">Access Token</text><text x="90" y="60" fill="#b4372e" font-size="10" font-weight="bold" text-anchor="middle">En Memoria RAM</text><text x="90" y="85" fill="#64748b" font-size="9" text-anchor="middle">Vida útil: 15 min</text><text x="90" y="110" fill="#059669" font-size="9" font-weight="bold" text-anchor="middle">No persiste en storage</text><text x="90" y="130" fill="#64748b" font-size="8" text-anchor="middle">apiFetch interceptor</text></g><path d="M 215 120 L 245 120" stroke="#0c3564" stroke-width="2"/><g transform="translate(250,40)"><rect width="180" height="160" rx="8" fill="#ffffff" stroke="#059669" stroke-width="2"/><text x="90" y="30" fill="#059669" font-size="11" font-weight="bold" text-anchor="middle">Refresh Token</text><text x="90" y="60" fill="#0c3564" font-size="10" font-weight="bold" text-anchor="middle">Cookie HttpOnly</text><text x="90" y="85" fill="#64748b" font-size="9" text-anchor="middle">SameSite=Strict · Secure</text><text x="90" y="110" fill="#059669" font-size="9" font-weight="bold" text-anchor="middle">Rotación en cada uso</text><text x="90" y="130" fill="#64748b" font-size="8" text-anchor="middle">sid inmutable</text></g></svg>'
     },
     "13": {
       badge: "ADR-013 · Superadministración",
@@ -318,8 +338,8 @@
       contexto: "Gestión de múltiples organizaciones y aprovisionamiento SaaS sin mezclar permisos operativos.",
       decision: "Aplicación y sesión global en subdominio dedicado (admin.residar...) con bandera esSuperadmin.",
       tradeoff: "Descartado: Añadir roles de superadmin a los paneles asistenciales de las residencias.",
-      consecuencia: "Aislamiento total entre la gestión de la plataforma SaaS y los datos privados de cada geriátrico.",
-      svg: '<svg viewBox="0 0 460 260" xmlns="http://www.w3.org/2000/svg"><rect width="460" height="260" rx="10" fill="#f8fafc" stroke="#e2e8f0"/><g transform="translate(40,40)"><rect width="380" height="170" rx="8" fill="#ffffff" stroke="#0c3564" stroke-width="2"/><text x="190" y="30" fill="#0c3564" font-size="11" font-weight="bold" text-anchor="middle">admin.residar... (Consola Global)</text><rect x="30" y="50" width="320" height="35" rx="4" fill="#fee2e2"/><text x="190" y="72" fill="#991b1b" font-size="10" font-weight="bold" text-anchor="middle">esSuperadmin = true (Bypass Total)</text><text x="190" y="115" fill="#334155" font-size="10" text-anchor="middle">Aprovisionamiento de Organizaciones &amp; Residencias</text><text x="190" y="135" fill="#64748b" font-size="9" text-anchor="middle">Cero visibilidad en historias clínicas asistenciales</text></g></svg>'
+      consecuencia: "Separación clara entre la gestión de la plataforma SaaS y la operación clínica de cada residencia.",
+      svg: '<svg viewBox="0 0 460 260" xmlns="http://www.w3.org/2000/svg"><rect width="460" height="260" rx="10" fill="#f8fafc" stroke="#e2e8f0"/><g transform="translate(40,40)"><rect width="380" height="170" rx="8" fill="#ffffff" stroke="#0c3564" stroke-width="2"/><text x="190" y="30" fill="#0c3564" font-size="11" font-weight="bold" text-anchor="middle">admin.residar... (Consola Global)</text><rect x="30" y="50" width="320" height="35" rx="4" fill="#fee2e2"/><text x="190" y="72" fill="#991b1b" font-size="10" font-weight="bold" text-anchor="middle">esSuperadmin = true (Bypass Total)</text><text x="190" y="115" fill="#334155" font-size="10" text-anchor="middle">Aprovisionamiento de Organizaciones &amp; Residencias</text><text x="190" y="135" fill="#64748b" font-size="9" text-anchor="middle">Separada de los paneles asistenciales</text></g></svg>'
     },
     "mail": {
       badge: "ADR-MAIL · Colas Transaccionales",
@@ -329,7 +349,7 @@
       decision: "Implementación de colas transaccionales utilizando la propia base PostgreSQL a través de pg-boss y un worker desacoplado.",
       tradeoff: "Descartado: Redis / RabbitMQ (infraestructura pesada innecesaria para el volumen del MVP).",
       consecuencia: "Reintentos automáticos, auditoría de envíos y arquitectura ligera alojada en el Homeserver UTN.",
-      svg: '<svg viewBox="0 0 460 260" xmlns="http://www.w3.org/2000/svg"><rect width="460" height="260" rx="10" fill="#f8fafc" stroke="#e2e8f0"/><g transform="translate(40,40)"><rect width="380" height="170" rx="8" fill="#ffffff" stroke="#0c3564" stroke-width="2"/><text x="190" y="30" fill="#0c3564" font-size="11" font-weight="bold" text-anchor="middle">Cola Transaccional con pg-boss</text><g transform="translate(30,50)"><rect width="130" height="45" rx="4" fill="#dbeafe"/><text x="65" y="22" fill="#1e40af" font-size="9" font-weight="bold" text-anchor="middle">NestJS API</text><text x="65" y="36" fill="#1e40af" font-size="8" text-anchor="middle">Encola invitación</text></g><text x="175" y="75" fill="#64748b" font-size="14">→</text><g transform="translate(190,50)"><rect width="160" height="45" rx="4" fill="#fef3c7"/><text x="80" y="22" fill="#92400e" font-size="9" font-weight="bold" text-anchor="middle">pg-boss Worker</text><text x="80" y="36" fill="#92400e" font-size="8" text-anchor="middle">PostgreSQL Queues</text></g><text x="190" y="130" fill="#059669" font-size="10" font-weight="bold" text-anchor="middle">Reintentos exponenciales · 0 pérdida de emails</text></g></svg>'
+      svg: '<svg viewBox="0 0 460 260" xmlns="http://www.w3.org/2000/svg"><rect width="460" height="260" rx="10" fill="#f8fafc" stroke="#e2e8f0"/><g transform="translate(40,40)"><rect width="380" height="170" rx="8" fill="#ffffff" stroke="#0c3564" stroke-width="2"/><text x="190" y="30" fill="#0c3564" font-size="11" font-weight="bold" text-anchor="middle">Cola Transaccional con pg-boss</text><g transform="translate(30,50)"><rect width="130" height="45" rx="4" fill="#dbeafe"/><text x="65" y="22" fill="#1e40af" font-size="9" font-weight="bold" text-anchor="middle">NestJS API</text><text x="65" y="36" fill="#1e40af" font-size="8" text-anchor="middle">Encola invitación</text></g><text x="175" y="75" fill="#64748b" font-size="14">→</text><g transform="translate(190,50)"><rect width="160" height="45" rx="4" fill="#fef3c7"/><text x="80" y="22" fill="#92400e" font-size="9" font-weight="bold" text-anchor="middle">pg-boss Worker</text><text x="80" y="36" fill="#92400e" font-size="8" text-anchor="middle">PostgreSQL Queues</text></g><text x="190" y="130" fill="#059669" font-size="10" font-weight="bold" text-anchor="middle">Reintentos automáticos · envíos persistidos en PostgreSQL</text></g></svg>'
     }
   };
 
@@ -351,7 +371,10 @@
     if (adcTitle) adcTitle.textContent = data.title;
     if (adcContexto) adcContexto.textContent = data.contexto;
     if (adcDecision) adcDecision.textContent = data.decision;
-    if (adcTradeoff) adcTradeoff.innerHTML = data.tradeoff ? "<b>Trade-off:</b> " + data.tradeoff : "";
+    if (adcTradeoff) {
+      // El texto ya trae sus etiquetas ("Descartado:", "Trade-off:", "Ganancia:"); sólo se resaltan.
+      adcTradeoff.innerHTML = (data.tradeoff || "").replace(/(Descartado|Trade-off|Ganancia):/g, "<b>$1:</b>");
+    }
     if (adcConsecuencia) adcConsecuencia.textContent = data.consecuencia;
     if (adrSvgContainer && data.svg) {
       adrSvgContainer.innerHTML = data.svg;
@@ -448,7 +471,7 @@
     "db": {
       stereo: "«Database Compartida»",
       name: "PostgreSQL 15 Relacional",
-      desc: "Instancia única compartida con partición lógica estricta por tenant. Costo O(1) y aislamiento garantizado.",
+      desc: "Instancia única compartida con partición lógica por tenant (residencia_id). Costo de infraestructura contenido.",
       adr: "ADR-001: DB Compartida"
     },
     "r2": {
@@ -583,7 +606,11 @@
     var title = activeSlide.dataset.title || ("Sección " + (currentSlide + 1));
     var eyebrow = activeSlide.dataset.eyebrow || "";
     if (hudSectionLabel) {
-      hudSectionLabel.textContent = eyebrow ? eyebrow + " · " + title : title;
+      hudSectionLabel.textContent = eyebrow || title;
+    }
+    // Deep-link (#7): si se recarga el navegador en plena defensa, vuelve a la misma slide
+    if (window.history && history.replaceState) {
+      history.replaceState(null, "", "#" + (currentSlide + 1));
     }
     if (slideCounter) {
       var num = (currentSlide + 1 < 10 ? "0" : "") + (currentSlide + 1);
@@ -596,6 +623,8 @@
 
     if (currentSlide === 0) {
       initParticles();
+    } else {
+      stopParticles();
     }
 
     applySlideStep(currentSlide, currentStep);
@@ -633,6 +662,9 @@
       return;
     }
 
+    // No interceptar combinaciones del navegador (Ctrl+F, Ctrl+R, Alt+←, etc.)
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+
     if (e.key === "f" || e.key === "F") {
       toggleFullscreen();
       return;
@@ -647,6 +679,9 @@
       toggleModal($("#modalHelp"));
       return;
     }
+
+    // Con un modal abierto no se navega ni se disparan atajos de slide
+    if ($(".modal-overlay.open")) return;
 
     if (e.key === "r" || e.key === "R") {
       goToSlide(currentSlide);
@@ -751,10 +786,16 @@
   if (btnHelp) btnHelp.addEventListener("click", function () { toggleModal($("#modalHelp")); });
   if (topBrand) topBrand.addEventListener("click", function (e) { e.preventDefault(); goToSlide(0); });
 
+  var resizeTimer = null;
   window.addEventListener("resize", function () {
-    if (currentSlide === 0) initParticles();
+    fitStage();
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function () {
+      if (currentSlide === 0) initParticles();
+    }, 150);
   });
 
-  goToSlide(0);
+  var initialSlide = parseInt((location.hash || "").replace("#", ""), 10);
+  goToSlide(initialSlide >= 1 && initialSlide <= totalSlides ? initialSlide - 1 : 0);
 
 })();

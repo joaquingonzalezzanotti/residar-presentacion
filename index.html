@@ -223,7 +223,7 @@
                 <li>Cierre administrativo</li>
                 <li>Liberación de cama</li>
                 <li>Reconciliación de stock</li>
-                <li>Archivo legal inmutable</li>
+                <li>Archivo legal del legajo</li>
               </ul>
             </div>
           </div>
@@ -270,7 +270,7 @@
                 </div>
               </div>
               <span class="topbar-tag" style="background:#fef2f2;color:#b91c1c;align-self:flex-start">
-                Arquitectura SaaS Lista
+                Base Multi-Cliente
               </span>
             </div>
           </div>
@@ -413,7 +413,7 @@
           <div class="slide-header">
             <div class="slide-eyebrow">Decisión de Dominio ADR-007</div>
             <h2 class="slide-title">Modelo de Stock: <em>Central vs. Individual</em> por lote</h2>
-            <p class="slide-subtitle">Aislamiento por residencia con trazabilidad inmutable y consumo originado en la prescripción médica.</p>
+            <p class="slide-subtitle">Aislamiento por residencia con trazabilidad de movimientos y consumo originado en la prescripción médica.</p>
           </div>
 
           <div class="stock-real-grid">
@@ -478,7 +478,7 @@
                 </div>
                 <h4>Multi-Tenancy Aislado</h4>
                 <p>Base compartida con <code>residencia_id</code> como tenant operativo.</p>
-                <div class="apb-metric">🔒 Aislamiento 100% Lógico</div>
+                <div class="apb-metric">🔒 Aislamiento lógico por tenant</div>
               </button>
 
               <button class="adr-pillar-btn" data-adr="7" id="tabAdr7">
@@ -498,7 +498,7 @@
                 </div>
                 <h4>Residencia Activa &amp; Rol</h4>
                 <p>Personal multi-sede con recálculo dinámico de permisos por JWT.</p>
-                <div class="apb-metric">⚡ Cero cuentas duplicadas</div>
+                <div class="apb-metric">⚡ Una cuenta por persona</div>
               </button>
 
               <button class="adr-pillar-btn" data-adr="9" id="tabAdr9">
@@ -638,7 +638,7 @@
                 </div>
               </div>
 
-              <div class="arch-connector-line">▼ &nbsp;HTTPS · REST JSON · Inyección Contexto Tenant (`residencia_id`) &nbsp;▼</div>
+              <div class="arch-connector-line">▼ &nbsp;HTTPS · REST JSON · Inyección Contexto Tenant (residencia_id) &nbsp;▼</div>
 
               <!-- CAPA 2 -->
               <div class="arch-swimlane" id="lane-2">
@@ -853,7 +853,7 @@
                 <h4>Facturación &amp; Obras Sociales</h4>
                 <div class="rmc-diff-box">
                   <span class="rmc-from"><b>Hoy:</b> Control operativo de camas</span>
-                  <span class="rmc-to"><b>Futuro:</b> Factura Electrónica AFIP</span>
+                  <span class="rmc-to"><b>Futuro:</b> Factura Electrónica ARCA</span>
                 </div>
                 <p style="font-size:11px;font-weight:600;color:var(--text-muted);line-height:1.4">
                   Liquidación mensual automática de estadías, extras y convenios de cobertura PAMI/IOMA.
@@ -890,9 +890,9 @@
 
           <div class="saas-readiness-banner">
             <div>
-              <b>Estado del Software: <em>Validado en Producción y Listo para Comercializar</em></b>
+              <b>Estado del Software: <em>Desplegado en el Piloto y Preparado para Multi-Cliente</em></b>
               <p style="font-size:12px;font-weight:700;color:#cbd5e1;margin-top:2px">
-                Arquitectura multitenant nativa probada en Homeserver UTN y completamente desacoplada del piloto inicial.
+                Arquitectura multitenant desplegada en el Homeserver UTN y desacoplada del cliente piloto inicial.
               </p>
             </div>
             <span class="topbar-tag" style="background:#ffffff;color:var(--brand-navy)">SaaS Multi-Cliente</span>
@@ -917,7 +917,7 @@
             <div class="takeaway-card">
               <div class="takeaway-icon">🛡️</div>
               <h4>Trazabilidad y Cero Papel</h4>
-              <span>Blindaje legal inmutable en medicación, historias clínicas y pases de guardia.</span>
+              <span>Registro trazable y auditable de medicación, historias clínicas y pases de guardia.</span>
             </div>
 
             <div class="takeaway-card">
@@ -995,8 +995,12 @@
         <div><kbd>F</kbd>: Pantalla completa</div>
         <div><kbd>G</kbd>: Menú índice</div>
         <div><kbd>H</kbd> / <kbd>?</kbd>: Ayuda</div>
-        <div><kbd>D</kbd>: Iniciar / Pausar cronómetro Demo</div>
-        <div><kbd>1</kbd> a <kbd>5</kbd>: Tildar hitos en la Demo</div>
+        <div><kbd>Inicio</kbd> / <kbd>Fin</kbd>: Primera / última slide</div>
+        <div><kbd>R</kbd>: Reiniciar animación de la slide</div>
+        <div><kbd>D</kbd>: Iniciar / Pausar cronómetro (06)</div>
+        <div><kbd>1</kbd>–<kbd>5</kbd>: Tildar hitos de la Demo (06)</div>
+        <div><kbd>1</kbd>–<kbd>4</kbd>: Elegir ADR principal (09)</div>
+        <div><kbd>1</kbd>–<kbd>5</kbd>: Filtrar flujos de arquitectura (10)</div>
         <div><kbd>Esc</kbd>: Cerrar menú</div>
       </div>
     </div>
