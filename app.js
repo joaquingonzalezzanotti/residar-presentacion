@@ -41,6 +41,9 @@
   var animReq = null;
   var canvasConverged = false;
   var animStartTime = 0;
+  var LOGO_ASPECT = 699.3 / 821.3;   // alto / ancho del viewBox de residar-logo.svg
+  var CONVERGE_MS = 2200;
+  var FADE_MS = 900;
 
   function initParticles() {
     if (!canvas || !window.RESIDAR_LOGO_POINTS) return;
@@ -54,12 +57,25 @@
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     var cx = W / 2;
     var cy = H / 2;
-    var scale = Math.min(W, H) * 0.85;
 
+    // Las partículas se encajan exactamente en el recuadro del logo vectorial,
+    // así al hacer el fundido coinciden en vez de quedar dos logos desfasados.
     var rawPoints = window.RESIDAR_LOGO_POINTS;
+    var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    rawPoints.forEach(function (pt) {
+      if (pt[0] < minX) minX = pt[0];
+      if (pt[0] > maxX) maxX = pt[0];
+      if (pt[1] < minY) minY = pt[1];
+      if (pt[1] > maxY) maxY = pt[1];
+    });
+    var logoW = (heroLogoImg && heroLogoImg.offsetWidth) || 190;
+    var logoH = logoW * LOGO_ASPECT;
+    var logoLeft = cx - logoW / 2;
+    var logoTop = cy - logoH / 2;
+
     particles = rawPoints.map(function (pt) {
-      var tx = cx + pt[0] * scale;
-      var ty = cy + pt[1] * scale;
+      var tx = logoLeft + (pt[0] - minX) / (maxX - minX) * logoW;
+      var ty = logoTop + (pt[1] - minY) / (maxY - minY) * logoH;
       var sx = cx + (Math.random() - 0.5) * W * 1.8;
       var sy = cy + (Math.random() - 0.5) * H * 1.8;
       var speed = 0.02 + Math.random() * 0.025;
@@ -90,18 +106,25 @@
     ctx.clearRect(0, 0, canvas.parentElement.offsetWidth, canvas.parentElement.offsetHeight);
 
     var elapsed = performance.now() - animStartTime;
-    var convergeFactor = Math.min(1, elapsed / 2200);
+    var convergeFactor = Math.min(1, elapsed / CONVERGE_MS);
     var ease = 1 - Math.pow(1 - convergeFactor, 3);
+    if (convergeFactor >= 0.9 && !canvasConverged) {
+      canvasConverged = true;
+      if (heroLogoImg) heroLogoImg.classList.add("visible");
+    }
+
+    // Una vez armado el logo, las partículas se desvanecen y queda sólo el SVG nítido
+    var fade = elapsed > CONVERGE_MS ? Math.max(0, 1 - (elapsed - CONVERGE_MS) / FADE_MS) : 1;
+    if (fade <= 0) {
+      animReq = null;
+      return;
+    }
+    ctx.globalAlpha = fade;
 
     for (var i = 0; i < particles.length; i++) {
       var p = particles[i];
       var curX = p.x + (p.tx - p.x) * ease;
       var curY = p.y + (p.ty - p.y) * ease;
-
-      if (convergeFactor >= 0.95) {
-        var wave = Math.sin(elapsed * 0.002 + i) * 0.8;
-        curY += wave;
-      }
 
       ctx.beginPath();
       ctx.arc(curX, curY, p.size, 0, Math.PI * 2);
@@ -112,11 +135,6 @@
         ctx.fillStyle = "rgba(12, 53, 100, " + (0.35 + ease * 0.5) + ")";
       }
       ctx.fill();
-    }
-
-    if (convergeFactor >= 0.9 && !canvasConverged) {
-      canvasConverged = true;
-      if (heroLogoImg) heroLogoImg.classList.add("visible");
     }
 
     animReq = requestAnimationFrame(loopParticles);
